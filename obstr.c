@@ -30,27 +30,53 @@ static uint32_t s_obstrkey[] = {0x0, 0x0, 0x0, 0x0};
 
 void ObstrEnc(const char *v, uint8_t *out, int *outsize)
 {
-    int vs = (strlen(v)+7) & 0xfffffff8;
-    *outsize = vs+4;
-    if (!out) return;
-    uint32_t *iout = (uint32_t *)out+1;
-    memcpy(iout, v, strlen(v)+1);
-    for (int i = 0; i < vs/8; ++i) {
-        encipher(16, iout+2*i, s_obstrkey);
+    int vs = (strlen(v) + 7) & 0xfffffff8;
+    int leb = vs;
+    int osize = 0;
+    // LEB128 codec.
+    while (leb > 127) {
+        *out++ = leb | 0x80;
+        leb >>= 7;
+        osize++;
     }
-    *(uint32_t *)out = vs ^ *iout ^ DELTA;
+    osize++;
+    *out++ = leb;
+
+    memcpy(out, v, strlen(v)+1);
+    for (int i = 0; i < vs/8; ++i) {
+        encipher(16, (uint32_t *)out + 2 * i, s_obstrkey);
+    }
+    *outsize = osize + vs;
 }
 
 char *ObstrDec(uint8_t *v)
 {
-    uint32_t vs = *(uint32_t *)v;
-    uint32_t *vt = (uint32_t *)v+1;
-    if (vs != 0) {
-        vs = vs ^ *vt ^ DELTA;
-        for (int i = 0; i < vs/8; ++i) {
-            decipher(16, vt+2*i, s_obstrkey);
+    if (*v) {
+        int vs = 0;
+        uint8_t *bv = v;
+        uint8_t byte = *v++;
+        if (byte < 128) {
+            vs = byte;
+        } else {
+            vs = byte & 0x7f;
+            unsigned shift = 7;
+            do
+            {
+                byte = *v++;
+                vs |= (byte & 0x7f) << shift;
+                shift += 7;
+            } while (byte >= 128);
         }
-        *(uint32_t *)v = 0;
+        while (bv != v) {
+            *bv++ = 0;
+        }
+
+        for (int i = 0; i < vs / 8; ++i)
+        {
+            decipher(16, (uint32_t*)v+2*i, s_obstrkey);
+        }
+    } else {
+        while (!*(++v)) {}
     }
-    return (char *)vt;
+    return (char *)v;
 }

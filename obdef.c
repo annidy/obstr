@@ -1,17 +1,13 @@
 #include "obstr.h"
 #include <stdio.h>
+#include <assert.h>
+#include <ctype.h>
 
-/* hello */
-static uint8_t obstr_3099[] = {0x7b,0xe4,0xf4,0xf7,0xca,0x9d,0xc3,0x69,0x36,0xed,0xff,0xac};
-#define O_hello ObstrDec(obstr_3099)
-/* aaaaaaaa */
-static uint8_t obstr_808d[] = {0xb0,0x03,0x4a,0x4a,0x01,0x7a,0x7d,0xd4,0x8d,0xc2,0x9a,0x36};
-#define O_aaaaaaaa ObstrDec(obstr_808d)
-
+#define MAXSIZE 10240
 
 char *hexdump(uint8_t *hex, int len)
 {
-    static char ch[1024];
+    static char ch[MAXSIZE*3];
     for (int i = 0; i < len; ++i)
     {
         sprintf(ch+i*5, "0x%02x,", (uint8_t)hex[i]);
@@ -22,16 +18,16 @@ char *hexdump(uint8_t *hex, int len)
 
 char *get_var_str(char *org)
 {
-    static char name[1024];
-    int i;
-    for (i = 0; i < strlen(org); i++) {
+    static char name[MAXSIZE];
+    int i, j;
+    for (i = 0, j = 0; i < strlen(org) && i < sizeof(name)-1; i++) {
           if (strchr(" `~!@#$%%^&*()+-=\"'/.,<>|[]{}:;", org[i])) {
-              name[i] = '_';
-          } else {
-              name[i] = org[i];
+              name[j++] = '_';
+          } else if (isprint((int)org[i])) {
+              name[j++] = org[i];
           }
     }
-    name[i] = 0;
+    name[j++] = 0;
     return name;
 }
 
@@ -46,24 +42,39 @@ unsigned short hash(char *str)
     return hash;
 }
 
+
+
 int main(int argc, char **argv)
 {
-  uint8_t out[1024] = {0};
-	for (int i = 1; i < argc; i++) {
-      char *str = argv[i];
-  		int len = 1024;
-	   	ObstrEnc(str, out, &len);
+    uint8_t out[MAXSIZE];
+    char in[MAXSIZE];
+
+    int i = 1;
+    do {
+        memset(in, MAXSIZE, 0);
+        memset(out, MAXSIZE, 0);
+        if (i == argc && i == 1) {
+            char c;
+            int  n = 0;
+            while ((c = getchar()) != EOF) {
+                in[n++] = c;
+            }
+        } else {
+            strcpy(in, argv[i]);
+        }
+        int len = MAXSIZE;
+        ObstrEnc(in, out, &len);
+        *(out+len) = 0;
 
         printf("/* %s */\n"
                "static uint8_t obstr_%x[] = {%s};\n"
                "#define O_%s ObstrDec(obstr_%x)\n",
-               str,
-               hash(str), hexdump(out, len),
-               get_var_str(str), hash(str));
-	}
-	if (argc == 1) {
+               in,
+               hash(in), hexdump(out, len),
+               get_var_str(in), hash(in));
 
-		printf("%s %s\n", O_hello, O_aaaaaaaa);
-	}
+        assert(strcmp(in, ObstrDec(out)) == 0);
+        assert(strcmp(in, ObstrDec(out)) == 0);
+    } while (++i < argc);
 	return 0;
 }
